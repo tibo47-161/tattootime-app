@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - TattooTime</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f9fafb;
+      color: #1f2937;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    
+    header {
+      background-color: #3B82F6;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+    
+    .offline-icon {
+      width: 100px;
+      height: 100px;
+      margin-bottom: 2rem;
+      color: #3B82F6;
+    }
+    
+    h1 {
+      margin-bottom: 1rem;
+      font-size: 1.8rem;
+    }
+    
+    p {
+      margin-bottom: 2rem;
+      max-width: 500px;
+      line-height: 1.6;
+      color: #4b5563;
+    }
+    
+    button {
+      background-color: #3B82F6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #2563eb;
+    }
+    
+    footer {
+      padding: 1rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: #6b7280;
+      border-top: 1px solid #e5e7eb;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TattooTime</h1>
+  </header>
+  
+  <main>
+    <svg class="offline-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m-3.536-3.536a5 5 0 010-7.072m-3.183 1.757a3 3 0 010 3.558M6.75 17.25l-3-3m3 3l3-3m-3 3v9m0-9H.75" />
+    </svg>
+    
+    <h1>Du bist offline</h1>
+    <p>
+      Es scheint, dass du keine Internetverbindung hast. Bitte überprüfe deine Verbindung und versuche es erneut.
+      Einige Funktionen der App sind auch offline verfügbar.
+    </p>
+    
+    <button onclick="window.location.reload()">Erneut versuchen</button>
+  </main>
+  
+  <footer>
+    <p>&copy; 2025 TattooTime. Alle Rechte vorbehalten.</p>
+  </footer>
+</body>
+</html>
+
