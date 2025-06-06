@@ -4,8 +4,9 @@ nixPkgs = ['nodejs-18_x']
 [phases.install]
 cmds = ['cd backend && npm install']
 
-[phases.build]
-cmds = ['cd backend && npm run build']
+# Entfernen Sie die build-Phase komplett
+# [phases.build]
+# cmds = ['cd backend && npm run build']
 
 [start]
 cmd = 'cd backend && npm start'
