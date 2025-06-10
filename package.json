@@ -3,10 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "vercel-build": "pnpm install --no-frozen-lockfile && cd backend && npm install"
+    "dev": "concurrently \"cd frontend && pnpm dev\" \"cd backend && npm run dev\"",
+    "build": "concurrently \"cd frontend && pnpm build\" \"cd backend && npm install\"",
+    "start": "cd backend && npm start",
+    "vercel-build": "pnpm install --no-frozen-lockfile && npm run build",
+    "prepare": "husky install",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "test": "cd backend && npm test"
   },
   "engines": {
     "node": ">=18",
     "pnpm": ">=7"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "husky": "^8.0.3",
+    "prettier": "^3.2.5"
   }
 }
