@@ -1,13 +1,18 @@
 {
-  "name": "tattootime-app",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "vercel-build": "pnpm install --no-frozen-lockfile && cd backend && npm install"
-  },
-  "engines": {
-    "node": ">=18",
-    "pnpm": ">=7"
-  }
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "backend/package.json",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/backend/api/$1"
+    }
+  ]
 }
-
