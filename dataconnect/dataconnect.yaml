@@ -1,0 +1,12 @@
+specVersion: "v1"
+serviceId: "tattootime-app"
+location: "europe-west3"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "fdcdb"
+      cloudSql:
+        instanceId: "tattootime-app-fdc"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]
