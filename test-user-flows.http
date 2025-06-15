@@ -1,0 +1,48 @@
+### Register
+POST http://localhost:8720/tattootime/us-central1/api/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "123456",
+  "name": "Test"
+}
+
+### Login
+POST http://localhost:8720/tattootime/us-central1/api/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "123456"
+}
+
+### Create Appointment
+POST http://localhost:8720/tattootime/us-central1/api/appointments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "date": "2024-06-15",
+  "time": "14:00",
+  "description": "Tattoo Termin"
+}
+
+### Get Appointments
+GET http://localhost:8720/tattootime/us-central1/api/appointments
+Authorization: Bearer {{token}}
+
+### Create Design
+POST http://localhost:8720/tattootime/us-central1/api/designs
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Drache",
+  "description": "Drachen-Tattoo",
+  "imageUrl": "https://example.com/dragon.png"
+}
+
+### Get Designs
+GET http://localhost:8720/tattootime/us-central1/api/designs
+Authorization: Bearer {{token}} 

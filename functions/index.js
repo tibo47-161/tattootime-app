@@ -1,75 +1,75 @@
-const functions = require('firebase-functions');
-const { onRequest } = require("firebase-functions/v2/https");
-const express = require('express');
-const cors = require('cors');
+const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const cors = require('cors')({ origin: true });
+const express = require('express');
 const { body, validationResult } = require('express-validator');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 
-// Firebase Admin initialisieren
+// Initialisierung
 admin.initializeApp();
 const db = admin.firestore();
 
-const app = express();
-
-// Verbesserte CORS-Konfiguration
-const corsOptions = {
-  origin: [
-    'https://tattootime.web.app',
-    'https://tattootime.firebaseapp.com',
-    'http://localhost:3000'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  maxAge: 86400 // 24 Stunden
+// Konfiguration
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const RATE_LIMIT = {
+  windowMs: 15 * 60 * 1000, // 15 Minuten
+  max: 100 // Limit pro IP
 };
 
-// Middleware
-app.use(cors(corsOptions));
+// Express App Setup
+const app = express();
+app.use(helmet());
 app.use(express.json());
+app.use(cors);
+app.use(rateLimit(RATE_LIMIT));
 
-// Umgebungsvariablen aus Firebase Functions Config lesen
-const config = functions.config();
-const JWT_SECRET = config.jwt?.secret || 'tattootime-secret-key-2024';
-const JWT_EXPIRES_IN = config.jwt?.expires_in || '7d';
-const NODE_ENV = config.node?.env || 'production';
+// Health Check Endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-// Validierung Middleware
-const validateUser = [
-  body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
-  body('name').notEmpty().trim()
-];
-
-// Auth Middleware
-const authenticateToken = async (req, res, next) => {
+// Middleware
+const authMiddleware = async (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
+    const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ error: 'Nicht autorisiert' });
     }
-
     const decoded = jwt.verify(token, JWT_SECRET);
-    const userDoc = await db.collection('users').doc(decoded.userId).get();
-    
-    if (!userDoc.exists) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-
-    req.user = { ...userDoc.data(), id: userDoc.id };
+    req.user = decoded;
     next();
   } catch (error) {
-    console.error('Auth error:', error);
-    res.status(401).json({ error: 'Invalid token' });
+    console.error('Auth Middleware Error:', error);
+    res.status(401).json({ error: 'Ungültiger Token' });
   }
 };
 
-// Routes
-app.post('/auth/register', validateUser, async (req, res) => {
+// Error Handler
+const errorHandler = (err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Interner Serverfehler',
+    code: err.code
+  });
+};
+
+// Validierung
+const validateRegistration = [
+  body('email').isEmail().normalizeEmail(),
+  body('password').isLength({ min: 6 }),
+  body('name').trim().notEmpty()
+];
+
+const validateLogin = [
+  body('email').isEmail().normalizeEmail(),
+  body('password').exists()
+];
+
+// Registrierung
+app.post('/register', validateRegistration, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -77,198 +77,262 @@ app.post('/auth/register', validateUser, async (req, res) => {
     }
 
     const { email, password, name } = req.body;
-
-    // Prüfe ob User bereits existiert
-    const userSnapshot = await db.collection('users')
+    
+    // Überprüfen ob E-Mail bereits existiert
+    const existingUser = await db.collection('users')
       .where('email', '==', email)
       .get();
-
-    if (!userSnapshot.empty) {
-      return res.status(400).json({ error: 'Email already registered' });
+    
+    if (!existingUser.empty) {
+      return res.status(400).json({ error: 'E-Mail bereits registriert' });
     }
 
-    // Hash Password
+    // Passwort hashen
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Erstelle User
+    
+    // Benutzer in Firestore speichern
     const userRef = await db.collection('users').add({
       email,
-      password: hashedPassword,
       name,
-      role: 'user',
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      password: hashedPassword,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Generiere Token
-    const token = jwt.sign(
-      { userId: userRef.id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    res.status(201).json({
-      token,
-      user: {
-        id: userRef.id,
-        email,
-        name,
-        role: 'user'
-      }
+    res.status(201).json({ 
+      message: 'Benutzer erfolgreich registriert',
+      userId: userRef.id 
     });
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    console.error('Registrierungsfehler:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
-app.post('/auth/login', async (req, res) => {
+// Login
+app.post('/login', validateLogin, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-    // Finde User
-    const userSnapshot = await db.collection('users')
-      .where('email', '==', email)
+    const { email, password } = req.body;
+    
+    // Benutzer in Firestore suchen
+    const usersRef = db.collection('users');
+    const snapshot = await usersRef.where('email', '==', email).get();
+    
+    if (snapshot.empty) {
+      return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+    }
+
+    const user = snapshot.docs[0].data();
+    
+    // Passwort überprüfen
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+    }
+
+    const token = jwt.sign(
+      { userId: snapshot.docs[0].id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({ 
+      token,
+      user: {
+        id: snapshot.docs[0].id,
+        email: user.email,
+        name: user.name
+      }
+    });
+  } catch (error) {
+    console.error('Login-Fehler:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Termin erstellen
+app.post('/appointments', authMiddleware, [
+  body('date').isISO8601(),
+  body('time').matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/),
+  body('description').trim().notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { date, time, description } = req.body;
+    
+    // Überprüfen auf Terminüberschneidungen
+    const startTime = new Date(`${date}T${time}`);
+    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 Stunde Dauer
+
+    const overlappingAppointments = await db.collection('appointments')
+      .where('userId', '==', req.user.userId)
+      .where('date', '==', date)
       .get();
 
-    if (userSnapshot.empty) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    for (const doc of overlappingAppointments.docs) {
+      const appointment = doc.data();
+      const appointmentStart = new Date(`${appointment.date}T${appointment.time}`);
+      const appointmentEnd = new Date(appointmentStart.getTime() + 60 * 60 * 1000);
+
+      if (startTime < appointmentEnd && endTime > appointmentStart) {
+        return res.status(400).json({ error: 'Terminüberschneidung' });
+      }
     }
 
-    const userDoc = userSnapshot.docs[0];
-    const user = userDoc.data();
+    const appointmentRef = await db.collection('appointments').add({
+      userId: req.user.userId,
+      date,
+      time,
+      description,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
 
-    // Prüfe Password
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    res.status(201).json({ 
+      message: 'Termin erfolgreich erstellt',
+      appointmentId: appointmentRef.id 
+    });
+  } catch (error) {
+    console.error('Fehler beim Erstellen des Termins:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
 
-    // Generiere Token
-    const token = jwt.sign(
-      { userId: userDoc.id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
+// Termine abrufen mit Pagination
+app.get('/appointments', authMiddleware, async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const start = (page - 1) * limit;
+
+    const appointmentsRef = db.collection('appointments');
+    const snapshot = await appointmentsRef
+      .where('userId', '==', req.user.userId)
+      .orderBy('date', 'desc')
+      .orderBy('time', 'desc')
+      .limit(parseInt(limit))
+      .offset(start)
+      .get();
+    
+    const appointments = [];
+    snapshot.forEach(doc => {
+      appointments.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    // Gesamtanzahl der Termine für Pagination
+    const totalSnapshot = await appointmentsRef
+      .where('userId', '==', req.user.userId)
+      .count()
+      .get();
 
     res.json({
-      token,
-      user: {
-        id: userDoc.id,
-        email: user.email,
-        name: user.name,
-        role: user.role
+      appointments,
+      pagination: {
+        total: totalSnapshot.data().count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(totalSnapshot.data().count / limit)
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    console.error('Fehler beim Abrufen der Termine:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
-// Termine Routes
-app.post('/appointments', authenticateToken, async (req, res) => {
+// Design erstellen
+app.post('/designs', authMiddleware, [
+  body('name').trim().notEmpty(),
+  body('description').trim().notEmpty(),
+  body('imageUrl').isURL()
+], async (req, res) => {
   try {
-    const { date, time, service, notes } = req.body;
-    const appointmentRef = await db.collection('appointments').add({
-      userId: req.user.id,
-      date,
-      time,
-      service,
-      notes,
-      status: 'pending',
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-    res.status(201).json({
-      id: appointmentRef.id,
-      date,
-      time,
-      service,
-      notes,
-      status: 'pending'
-    });
-  } catch (error) {
-    console.error('Appointment creation error:', error);
-    res.status(500).json({ error: 'Failed to create appointment' });
-  }
-});
-
-app.get('/appointments', authenticateToken, async (req, res) => {
-  try {
-    const appointmentsSnapshot = await db.collection('appointments')
-      .where('userId', '==', req.user.id)
-      .orderBy('date', 'asc')
-      .get();
-
-    const appointments = appointmentsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    res.json(appointments);
-  } catch (error) {
-    console.error('Appointments fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch appointments' });
-  }
-});
-
-// Designs Routes
-app.post('/designs', authenticateToken, async (req, res) => {
-  try {
     const { name, description, imageUrl } = req.body;
+    
     const designRef = await db.collection('designs').add({
-      userId: req.user.id,
+      userId: req.user.userId,
       name,
       description,
       imageUrl,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    res.status(201).json({
-      id: designRef.id,
-      name,
-      description,
-      imageUrl
+    res.status(201).json({ 
+      message: 'Design erfolgreich erstellt',
+      designId: designRef.id 
     });
   } catch (error) {
-    console.error('Design creation error:', error);
-    res.status(500).json({ error: 'Failed to create design' });
+    console.error('Fehler beim Erstellen des Designs:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
-app.get('/designs', authenticateToken, async (req, res) => {
+// Designs abrufen mit Pagination
+app.get('/designs', authMiddleware, async (req, res) => {
   try {
-    const designsSnapshot = await db.collection('designs')
-      .where('userId', '==', req.user.id)
+    const { page = 1, limit = 10 } = req.query;
+    const start = (page - 1) * limit;
+
+    const designsRef = db.collection('designs');
+    const snapshot = await designsRef
+      .where('userId', '==', req.user.userId)
       .orderBy('createdAt', 'desc')
+      .limit(parseInt(limit))
+      .offset(start)
+      .get();
+    
+    const designs = [];
+    snapshot.forEach(doc => {
+      designs.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    // Gesamtanzahl der Designs für Pagination
+    const totalSnapshot = await designsRef
+      .where('userId', '==', req.user.userId)
+      .count()
       .get();
 
-    const designs = designsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    res.json(designs);
+    res.json({
+      designs,
+      pagination: {
+        total: totalSnapshot.data().count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(totalSnapshot.data().count / limit)
+      }
+    });
   } catch (error) {
-    console.error('Designs fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch designs' });
+    console.error('Fehler beim Abrufen der Designs:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
   }
 });
 
-// Express-Server für Firebase Functions (2nd Gen)
-exports.api = onRequest({
-  memory: "512MB",
-  region: "us-central1",
-  minInstances: 0,
-  maxInstances: 2,
-  timeoutSeconds: 60,
-  concurrency: 80
-}, app);
+// Error Handler Middleware
+app.use(errorHandler);
 
-// Für lokale Entwicklung
-if (process.env.NODE_ENV === 'development') {
-  const port = process.env.PORT || 8080;
-  app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
-}
+// Exportiere die Cloud Function mit Generation 2
+exports.api = onRequest({
+  memory: '256MiB',
+  timeoutSeconds: 60,
+  region: 'us-central1'
+}, app); 
