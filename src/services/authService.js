@@ -3,7 +3,7 @@ import api from './api';
 // Login-Funktion mit verbesserter Fehlerbehandlung
 export const login = async (email, password) => {
   try {
-    const response = await api.post('/auth/login', { email, password });
+    const response = await api.post('/login', { email, password });
     const { token, refreshToken, user } = response.data;
     
     // Token im localStorage speichern
@@ -20,7 +20,7 @@ export const login = async (email, password) => {
 // Token-Aktualisierung mit verbesserter Fehlerbehandlung
 export const refreshToken = async (refreshToken) => {
   try {
-    const response = await api.post('/auth/refresh-token', { refreshToken });
+    const response = await api.post('/refresh-token', { refreshToken });
     const { token } = response.data;
     
     // Neues Token speichern
@@ -39,7 +39,7 @@ export const refreshToken = async (refreshToken) => {
 // Aktuellen Benutzer abrufen
 export const getCurrentUser = async () => {
   try {
-    const response = await api.get('/auth/profile');
+    const response = await api.get('/profile');
     return response.data.user;
   } catch (error) {
     console.error('Get current user error:', error);
@@ -50,7 +50,7 @@ export const getCurrentUser = async () => {
 // Passwort vergessen
 export const forgotPassword = async (email) => {
   try {
-    const response = await api.post('/auth/forgot-password', { email });
+    const response = await api.post('/forgot-password', { email });
     return response.data;
   } catch (error) {
     console.error('Forgot password error:', error);
@@ -61,7 +61,7 @@ export const forgotPassword = async (email) => {
 // Passwort zurücksetzen
 export const resetPassword = async (token, password) => {
   try {
-    const response = await api.post(`/auth/reset-password/${token}`, { password });
+    const response = await api.post(`/reset-password/${token}`, { password });
     return response.data;
   } catch (error) {
     console.error('Reset password error:', error);
@@ -72,7 +72,7 @@ export const resetPassword = async (token, password) => {
 // Benutzereinstellungen aktualisieren
 export const updateSettings = async (settings) => {
   try {
-    const response = await api.put('/auth/settings', settings);
+    const response = await api.put('/settings', settings);
     return response.data;
   } catch (error) {
     console.error('Update settings error:', error);

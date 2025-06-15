@@ -26,6 +26,12 @@ app.use(express.json());
 app.use(cors);
 app.use(rateLimit(RATE_LIMIT));
 
+// Logging Middleware (temporär zur Diagnose)
+app.use((req, res, next) => {
+  console.log('Received request for path:', req.path);
+  next();
+});
+
 // Health Check Endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -54,6 +60,15 @@ const errorHandler = (err, req, res, next) => {
     error: err.message || 'Interner Serverfehler',
     code: err.code
   });
+};
+
+// Admin Middleware
+const checkAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(403).json({ error: 'Keine Berechtigung: Nur für Admins' });
+  }
 };
 
 // Validierung
@@ -325,6 +340,203 @@ app.get('/designs', authMiddleware, async (req, res) => {
     console.error('Fehler beim Abrufen der Designs:', error);
     res.status(500).json({ error: 'Interner Serverfehler' });
   }
+});
+
+// Design by ID abrufen
+app.get('/designs/:id', authMiddleware, async (req, res) => {
+  try {
+    const designId = req.params.id;
+    const designRef = db.collection('designs').doc(designId);
+    const snapshot = await designRef.get();
+    
+    if (!snapshot.exists) {
+      return res.status(404).json({ error: 'Design nicht gefunden' });
+    }
+
+    const design = snapshot.data();
+    res.json(design);
+  } catch (error) {
+    console.error('Fehler beim Abrufen des Designs:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Design aktualisieren
+app.put('/designs/:id', authMiddleware, [
+  body('name').trim().notEmpty(),
+  body('description').trim().notEmpty(),
+  body('imageUrl').isURL()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const designId = req.params.id;
+    const { name, description, imageUrl } = req.body;
+    
+    const designRef = db.collection('designs').doc(designId);
+    const snapshot = await designRef.get();
+    
+    if (!snapshot.exists) {
+      return res.status(404).json({ error: 'Design nicht gefunden' });
+    }
+
+    await designRef.update({
+      name,
+      description,
+      imageUrl,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.status(200).json({ message: 'Design erfolgreich aktualisiert' });
+  } catch (error) {
+    console.error('Fehler beim Aktualisieren des Designs:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Design löschen
+app.delete('/designs/:id', authMiddleware, async (req, res) => {
+  try {
+    const designId = req.params.id;
+    const designRef = db.collection('designs').doc(designId);
+    const snapshot = await designRef.get();
+    
+    if (!snapshot.exists) {
+      return res.status(404).json({ error: 'Design nicht gefunden' });
+    }
+
+    await designRef.delete();
+    res.status(200).json({ message: 'Design erfolgreich gelöscht' });
+  } catch (error) {
+    console.error('Fehler beim Löschen des Designs:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Admin: Alle Nutzer abrufen
+app.get('/admin/users', authMiddleware, checkAdmin, async (req, res) => {
+  try {
+    const usersRef = db.collection('users');
+    const snapshot = await usersRef.get();
+    
+    const users = [];
+    snapshot.forEach(doc => {
+      users.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    res.json(users);
+  } catch (error) {
+    console.error('Fehler beim Abrufen der Nutzer:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Admin: Nutzerrolle ändern
+app.post('/admin/users/:id/role', authMiddleware, checkAdmin, [
+  body('role').isIn(['admin', 'user'])
+], async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { role } = req.body;
+    
+    const userRef = db.collection('users').doc(userId);
+    const snapshot = await userRef.get();
+    
+    if (!snapshot.exists) {
+      return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    }
+
+    await userRef.update({
+      role,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.status(200).json({ message: 'Nutzerrolle erfolgreich geändert' });
+  } catch (error) {
+    console.error('Fehler beim Ändern der Nutzerrolle:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Admin: Nutzer löschen
+app.delete('/admin/users/:id', authMiddleware, checkAdmin, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const userRef = db.collection('users').doc(userId);
+    const snapshot = await userRef.get();
+    
+    if (!snapshot.exists) {
+      return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    }
+
+    await userRef.delete();
+    res.status(200).json({ message: 'Nutzer erfolgreich gelöscht' });
+  } catch (error) {
+    console.error('Fehler beim Löschen des Nutzers:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Token-Aktualisierung
+app.post('/refresh-token', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Nicht autorisiert' });
+    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const newToken = jwt.sign(
+      { userId: decoded.userId, email: decoded.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    res.json({ token: newToken });
+  } catch (error) {
+    console.error('Token-Aktualisierungsfehler:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Aktuellen Benutzer abrufen
+app.get('/profile', authMiddleware, async (req, res) => {
+  try {
+    const userRef = db.collection('users').doc(req.user.userId);
+    const snapshot = await userRef.get();
+    
+    if (!snapshot.exists) {
+      return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    }
+
+    const user = snapshot.data();
+    res.json(user);
+  } catch (error) {
+    console.error('Fehler beim Abrufen des Profils:', error);
+    res.status(500).json({ error: 'Interner Serverfehler' });
+  }
+});
+
+// Passwort vergessen
+app.post('/forgot-password', async (req, res) => {
+  // Implementierung des Passwort-Vergessens-Prozesses
+  res.status(501).json({ error: 'Diese Funktion ist noch nicht implementiert' });
+});
+
+// Passwort zurücksetzen
+app.post('/reset-password/:token', async (req, res) => {
+  // Implementierung des Passwort-Zurücksetzens-Prozesses
+  res.status(501).json({ error: 'Diese Funktion ist noch nicht implementiert' });
+});
+
+// Benutzereinstellungen aktualisieren
+app.put('/settings', authMiddleware, async (req, res) => {
+  // Implementierung der Nutzer-Einstellungen-Aktualisierung
+  res.status(501).json({ error: 'Diese Funktion ist noch nicht implementiert' });
 });
 
 // Error Handler Middleware

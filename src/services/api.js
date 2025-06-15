@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // API-Basis-URL für Firebase Functions
-const API_URL = 'https://api-hinm24nziq-uc.a.run.app';
+const API_URL = '/api';
 
 // Axios-Instanz mit Basis-URL erstellen
 const api = axios.create({
