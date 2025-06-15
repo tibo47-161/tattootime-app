@@ -20,6 +20,7 @@ import WorkingHoursPage from './pages/dashboard/WorkingHoursPage';
 import BlockedTimesPage from './pages/dashboard/BlockedTimesPage';
 import CustomersPage from './pages/dashboard/CustomersPage';
 import SettingsPage from './pages/dashboard/SettingsPage';
+import AdminUsersPage from './pages/dashboard/AdminUsersPage';
 
 // Public Pages
 import BookingPage from './pages/public/BookingPage';
@@ -101,6 +102,7 @@ function App() {
             <Route path="/blocked-times" element={<BlockedTimesPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/admin-users" element={<AdminUsersPage />} />
           </Route>
 
           {/* Public Routes */}

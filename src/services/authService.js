@@ -1,32 +1,60 @@
 import api from './api';
 
-// Login-Funktion
+// Login-Funktion mit verbesserter Fehlerbehandlung
 export const login = async (email, password) => {
   try {
     const response = await api.post('/auth/login', { email, password });
-    return response.data;
+    const { token, refreshToken, user } = response.data;
+    
+    // Token im localStorage speichern
+    localStorage.setItem('token', token);
+    localStorage.setItem('refreshToken', refreshToken);
+    
+    return { user, token };
   } catch (error) {
+    console.error('Login error:', error);
     throw new Error(error.response?.data?.message || 'Login fehlgeschlagen');
   }
 };
 
-// Token aktualisieren
+// Token-Aktualisierung mit verbesserter Fehlerbehandlung
 export const refreshToken = async (refreshToken) => {
   try {
     const response = await api.post('/auth/refresh-token', { refreshToken });
-    return response.data;
+    const { token } = response.data;
+    
+    // Neues Token speichern
+    localStorage.setItem('token', token);
+    
+    return { token };
   } catch (error) {
-    throw new Error(error.response?.data?.message || 'Token-Aktualisierung fehlgeschlagen');
+    console.error('Token refresh error:', error);
+    // Bei Fehler: Token entfernen und neu anmelden
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    throw new Error('Sitzung abgelaufen. Bitte erneut anmelden.');
   }
 };
 
-// Passwort zurücksetzen anfordern
+// Aktuellen Benutzer abrufen
+export const getCurrentUser = async () => {
+  try {
+    const response = await api.get('/auth/profile');
+    return response.data.user;
+  } catch (error) {
+    console.error('Get current user error:', error);
+    throw new Error(error.response?.data?.message || 'Fehler beim Abrufen der Benutzerdaten');
+  }
+};
+
+// Passwort vergessen
 export const forgotPassword = async (email) => {
   try {
     const response = await api.post('/auth/forgot-password', { email });
     return response.data;
   } catch (error) {
-    throw new Error(error.response?.data?.message || 'Passwort-Zurücksetzung fehlgeschlagen');
+    console.error('Forgot password error:', error);
+    throw new Error(error.response?.data?.message || 'Fehler beim Anfordern des Passwort-Resets');
   }
 };
 
@@ -36,28 +64,27 @@ export const resetPassword = async (token, password) => {
     const response = await api.post(`/auth/reset-password/${token}`, { password });
     return response.data;
   } catch (error) {
-    throw new Error(error.response?.data?.message || 'Passwort-Zurücksetzung fehlgeschlagen');
-  }
-};
-
-// Aktuellen Benutzer abrufen
-export const getCurrentUser = async () => {
-  try {
-    const response = await api.get('/auth/me');
-    return response.data;
-  } catch (error) {
-    throw new Error(error.response?.data?.message || 'Benutzerinformationen konnten nicht abgerufen werden');
+    console.error('Reset password error:', error);
+    throw new Error(error.response?.data?.message || 'Fehler beim Zurücksetzen des Passworts');
   }
 };
 
 // Benutzereinstellungen aktualisieren
 export const updateSettings = async (settings) => {
   try {
-    const response = await api.put('/auth/settings', { settings });
+    const response = await api.put('/auth/settings', settings);
     return response.data;
   } catch (error) {
-    throw new Error(error.response?.data?.message || 'Einstellungen konnten nicht aktualisiert werden');
+    console.error('Update settings error:', error);
+    throw new Error(error.response?.data?.message || 'Fehler beim Aktualisieren der Einstellungen');
   }
+};
+
+// Logout-Funktion
+export const logout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  window.location.href = '/login';
 };
 
 export default {
@@ -66,6 +93,7 @@ export default {
   forgotPassword,
   resetPassword,
   getCurrentUser,
-  updateSettings
+  updateSettings,
+  logout
 };
 

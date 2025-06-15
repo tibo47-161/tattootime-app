@@ -11,7 +11,8 @@ import {
   Home,
   Tag,
   Clock,
-  Ban
+  Ban,
+  Shield
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ const DashboardLayout = () => {
     },
     { to: '/customers', label: 'Kunden', icon: <Users className="h-5 w-5" /> },
     { to: '/settings', label: 'Einstellungen', icon: <Settings className="h-5 w-5" /> },
+    { to: '/admin-users', label: 'Benutzerverwaltung', icon: <Shield className="h-5 w-5" /> },
   ];
 
   const NavItems = () => (

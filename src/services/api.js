@@ -1,14 +1,15 @@
 import axios from 'axios';
 
-// API-Basis-URL aus der Umgebungsvariable oder Standard-URL
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// API-Basis-URL für Firebase Functions
+const API_URL = 'https://us-central1-tattootime.cloudfunctions.net/api';
 
 // Axios-Instanz mit Basis-URL erstellen
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 10000 // 10 Sekunden Timeout
 });
 
 // Request-Interceptor für das Hinzufügen des Auth-Tokens
@@ -21,6 +22,7 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
@@ -38,29 +40,23 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        // Versuche, das Token zu aktualisieren
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
-          // Kein Refresh-Token vorhanden, Benutzer ausloggen
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
-          window.location.href = '/login';
-          return Promise.reject(error);
+          throw new Error('No refresh token available');
         }
 
-        // Token aktualisieren
-        const response = await axios.post(`${API_URL}/auth/refresh-token`, {
-          refreshToken
-        });
-
+        // Versuche, das Token zu aktualisieren
+        const response = await api.post('/auth/refresh-token', { refreshToken });
+        const { token } = response.data;
+        
         // Neues Token speichern
-        const { accessToken } = response.data;
-        localStorage.setItem('token', accessToken);
+        localStorage.setItem('token', token);
 
         // Ursprüngliche Anfrage mit neuem Token wiederholen
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${token}`;
         return api(originalRequest);
       } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
         // Token-Aktualisierung fehlgeschlagen, Benutzer ausloggen
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
@@ -69,7 +65,20 @@ api.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error);
+    // Andere Fehler behandeln
+    if (error.response) {
+      // Server hat mit einem Fehlerstatus geantwortet
+      console.error('API error:', error.response.data);
+      return Promise.reject(error.response.data);
+    } else if (error.request) {
+      // Anfrage wurde gesendet, aber keine Antwort erhalten
+      console.error('Network error:', error.request);
+      return Promise.reject(new Error('Netzwerkfehler. Bitte überprüfe deine Internetverbindung.'));
+    } else {
+      // Fehler beim Erstellen der Anfrage
+      console.error('Request setup error:', error.message);
+      return Promise.reject(error);
+    }
   }
 );
 
